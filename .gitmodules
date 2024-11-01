@@ -1,0 +1,3 @@
+[submodule "day1/vendor/claudius"]
+	path = day1/vendor/claudius
+	url = https://github.com/mdales/claudius
