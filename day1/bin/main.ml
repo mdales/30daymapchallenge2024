@@ -1,33 +1,7 @@
 open Claudius
-
-type vec = { x : float; y : float; z : float }
-type elem = Point of vec | Line of vec * vec | Polygon of vec list
+open Graphics
 
 let radius = 60.
-
-let rotate_x (a : float) (p : vec) : vec =
-  {
-    p with
-    y = (p.y *. cos a) -. (p.z *. sin a);
-    z = (p.y *. sin a) +. (p.z *. cos a);
-  }
-
-let rotate_y (a : float) (p : vec) : vec =
-  {
-    p with
-    x = (p.x *. cos a) -. (p.z *. sin a);
-    z = (p.x *. sin a) +. (p.z *. cos a);
-  }
-
-let _rotate_z (a : float) (p : vec) : vec =
-  {
-    p with
-    x = (p.x *. cos a) -. (p.y *. sin a);
-    y = (p.x *. sin a) +. (p.y *. cos a);
-  }
-
-let _point_z_cmp (a : vec) (b : vec) : int =
-  if a.z == b.z then 0 else if a.z < b.z then 1 else -1
 
 let project s (v : vec) : Primitives.point =
   let width, height = Screen.dimensions s in
@@ -51,6 +25,9 @@ let render_to_primitives (_ft : float) (s : Screen.t) (elements : elem list) :
             ( project s a,
               project s b,
               (Palette.size palette - 1) / if a.z < 0. then 1 else 3 )
+      | Triangle (a, b, c) ->
+          Primitives.FilledTriangle
+            (project s a, project s b, project s c, Palette.size palette - 1)
       | Polygon vl ->
           Primitives.FilledPolygon
             (List.map (project s) vl, Palette.size palette - 1))
@@ -61,6 +38,7 @@ let rotate_element angle e =
   match e with
   | Point v -> Point (rfunc v)
   | Line (a, b) -> Line (rfunc a, rfunc b)
+  | Triangle (a, b, c) -> Triangle (rfunc a, rfunc b, rfunc c)
   | Polygon vl -> Polygon (List.map rfunc vl)
 
 let tick elements t s prev _i =
