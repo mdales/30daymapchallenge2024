@@ -1,7 +1,7 @@
 open Claudius
 
 type vec = { x : float; y : float; z : float }
-type elem = Point of vec | Line of vec * vec
+type elem = Point of vec | Line of vec * vec | Polygon of vec list
 
 let radius = 60.
 
@@ -29,39 +29,39 @@ let _rotate_z (a : float) (p : vec) : vec =
 let _point_z_cmp (a : vec) (b : vec) : int =
   if a.z == b.z then 0 else if a.z < b.z then 1 else -1
 
+let project s (v : vec) : Primitives.point =
+  let width, height = Screen.dimensions s in
+  let m = 2000. +. (cos (0. /. 30.) *. 600.) in
+  {
+    x = (width / 2) + int_of_float (m *. v.x /. (v.z +. 400.));
+    y = (height / 2) + int_of_float (m *. v.y /. (v.z +. 400.));
+  }
+
 let render_to_primitives (_ft : float) (s : Screen.t) (elements : elem list) :
     Primitives.t list =
-  let width, height = Screen.dimensions s and palette = Screen.palette s in
-  let m = 2000. +. (cos (0. /. 30.) *. 600.) in
+  let palette = Screen.palette s in
   List.map
     (fun e ->
       match e with
       | Point e ->
           Primitives.Pixel
-            ( {
-                x = (width / 2) + int_of_float (m *. e.x /. (e.z +. 400.));
-                y = (height / 2) + int_of_float (m *. e.y /. (e.z +. 400.));
-              },
-              (Palette.size palette - 1) / if e.z < 0. then 1 else 3 )
+            (project s e, (Palette.size palette - 1) / if e.z < 0. then 1 else 3)
       | Line (a, b) ->
           Primitives.Line
-            ( {
-                x = (width / 2) + int_of_float (m *. a.x /. (a.z +. 400.));
-                y = (height / 2) + int_of_float (m *. a.y /. (a.z +. 400.));
-              },
-              {
-                x = (width / 2) + int_of_float (m *. b.x /. (b.z +. 400.));
-                y = (height / 2) + int_of_float (m *. b.y /. (b.z +. 400.));
-              },
-              (Palette.size palette - 1) / if a.z < 0. then 1 else 3 ))
+            ( project s a,
+              project s b,
+              (Palette.size palette - 1) / if a.z < 0. then 1 else 3 )
+      | Polygon vl ->
+          Primitives.FilledPolygon
+            (List.map (project s) vl, Palette.size palette - 1))
     elements
 
 let rotate_element angle e =
   let rfunc x = rotate_x 0.1 (rotate_y angle x) in
-
   match e with
   | Point v -> Point (rfunc v)
   | Line (a, b) -> Line (rfunc a, rfunc b)
+  | Polygon vl -> Polygon (List.map rfunc vl)
 
 let tick elements t s prev _i =
   let buffer =
@@ -123,6 +123,14 @@ let () =
                     in
                     loop hd1 hd2 tl [])
               lines
+        | Polygon coordinate_list_list -> (
+            (* GeoJSON polygons are lists of polygons, with the first being the outer and the rest being holes.
+               Claudius doesn't model those, so we just process the first one and ignore the others for now.
+            *)
+            match coordinate_list_list with
+            | coordinate_list :: _ ->
+                [ Polygon (List.map coord_to_vec coordinate_list) ]
+            | _ -> [])
         | _ -> [])
       features
   in
