@@ -1,3 +1,6 @@
 [submodule "day1/vendor/claudius"]
 	path = day1/vendor/claudius
 	url = https://github.com/mdales/claudius
+[submodule "day1/vendor/ocaml-h3"]
+	path = day1/vendor/ocaml-h3
+	url = https://github.com/mdales/ocaml-h3

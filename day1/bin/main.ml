@@ -73,47 +73,74 @@ let coord_to_vec (coord : Feature.coord) =
   }
   |> rotate_x (pi *. 0.5)
 
+let h3_lat_lng_to_vec (coord : H3.lat_lng) =
+  let lat = coord.lat and lng = coord.lon in
+  {
+    x = radius *. cos lat *. cos lng;
+    y = radius *. sin lng *. cos lat;
+    z = radius *. sin lat;
+  }
+  |> rotate_x (pi *. 0.5)
+
+let load_data_from_geojson filename =
+  let features = Geojson.of_file filename |> Geojson.features in
+  List.concat_map
+    (fun feat ->
+      match Feature.geometry feat with
+      | Point coord -> [ Point (coord_to_vec coord) ]
+      | MultiLineString lines ->
+          List.concat_map
+            (fun coordinate_list ->
+              match coordinate_list with
+              | [] | _ :: [] -> []
+              | hd1 :: hd2 :: tl ->
+                  let rec loop last next rest acc =
+                    let n =
+                      Line (coord_to_vec last, coord_to_vec next) :: acc
+                    in
+                    match rest with [] -> n | hd :: tl -> loop next hd tl n
+                  in
+                  loop hd1 hd2 tl [])
+            lines
+      | Polygon coordinate_list_list -> (
+          (* GeoJSON polygons are lists of polygons, with the first being the outer and the rest being holes.
+             Claudius doesn't model those, so we just process the first one and ignore the others for now.
+          *)
+          match coordinate_list_list with
+          | coordinate_list :: _ ->
+              [ Polygon (List.map coord_to_vec coordinate_list) ]
+          | _ -> [])
+      | _ -> [])
+    features
+
+let load_data_from_csv filename =
+  In_channel.with_open_text filename (fun inc ->
+      Csv.fold_left
+        ~f:(fun acc row ->
+          match row with
+          | [ cellid; _value ] -> (
+              let cell = H3.string_to_h3 cellid in
+              let boundary = H3.cell_to_boundary cell in
+              match boundary.num_verts with
+              | 0 -> acc
+              | _ ->
+                  Polygon
+                    (List.map h3_lat_lng_to_vec (Array.to_list boundary.verts))
+                  :: acc)
+          | _ -> failwith "unable to parse CSV row")
+        ~init:[] (Csv.of_channel inc))
+
+let load_data_from_file filename =
+  match Filename.extension filename with
+  | ".geojson" -> load_data_from_geojson filename
+  | ".csv" -> load_data_from_csv filename
+  | _ -> failwith (Printf.sprintf "Unrecognised file extension on %s" filename)
+
 let () =
   let args_list = List.tl (Array.to_list Sys.argv) in
 
-  let features =
-    List.concat_map
-      (fun filename -> Geojson.of_file filename |> Geojson.features)
-      args_list
-  in
+  let elements = List.concat_map load_data_from_file args_list in
 
-  let elements =
-    List.concat_map
-      (fun feat ->
-        match Feature.geometry feat with
-        | Point coord -> [ Point (coord_to_vec coord) ]
-        | MultiLineString lines ->
-            List.concat_map
-              (fun coordinate_list ->
-                match coordinate_list with
-                | [] | _ :: [] -> []
-                | hd1 :: hd2 :: tl ->
-                    let rec loop last next rest acc =
-                      let n =
-                        Line (coord_to_vec last, coord_to_vec next) :: acc
-                      in
-                      match rest with [] -> n | hd :: tl -> loop next hd tl n
-                    in
-                    loop hd1 hd2 tl [])
-              lines
-        | Polygon coordinate_list_list -> (
-            (* GeoJSON polygons are lists of polygons, with the first being the outer and the rest being holes.
-               Claudius doesn't model those, so we just process the first one and ignore the others for now.
-            *)
-            match coordinate_list_list with
-            | coordinate_list :: _ ->
-                [ Polygon (List.map coord_to_vec coordinate_list) ]
-            | _ -> [])
-        | _ -> [])
-      features
-  in
-
-  Printf.printf "%d features\n" (List.length features);
   Printf.printf "%d elements\n" (List.length elements);
 
   Palette.generate_mono_palette 16
