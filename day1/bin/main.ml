@@ -11,26 +11,24 @@ let project s (v : vec) : Primitives.point =
     y = (height / 2) + int_of_float (m *. v.y /. (v.z +. 400.));
   }
 
-let render_to_primitives (_ft : float) (s : Screen.t) (elements : elem list) :
-    Primitives.t list =
-  let palette = Screen.palette s in
+let render_to_primitives (_ft : float) (s : Screen.t)
+    (elements : (elem * float) list) : Primitives.t list =
+  let palette_size = Palette.size (Screen.palette s) - 1 in
   List.map
-    (fun e ->
+    (fun (e, c) ->
+      let col = Int.of_float (Float.of_int palette_size *. c) in
       match e with
       | Point e ->
-          Primitives.Pixel
-            (project s e, (Palette.size palette - 1) / if e.z < 0. then 1 else 3)
+          Primitives.Pixel (project s e, col / if e.z < 0. then 1 else 3)
       | Line (a, b) ->
           Primitives.Line
-            ( project s a,
-              project s b,
-              (Palette.size palette - 1) / if a.z < 0. then 1 else 3 )
+            (project s a, project s b, col / if a.z < 0. then 1 else 3)
       | Triangle (a, b, c) ->
-          Primitives.FilledTriangle
-            (project s a, project s b, project s c, Palette.size palette - 1)
+          Primitives.FilledTriangle (project s a, project s b, project s c, col)
       | Polygon vl ->
+          let rep = Graphics.get_represent_vec e in
           Primitives.FilledPolygon
-            (List.map (project s) vl, Palette.size palette - 1))
+            (List.map (project s) vl, col / if rep.z < 0. then 1 else 3))
     elements
 
 let rotate_element angle e =
@@ -44,14 +42,16 @@ let rotate_element angle e =
 let tick elements t s prev _i =
   let buffer =
     Framebuffer.map
-      (fun _pixel -> 0 (* if pixel > 4 then (pixel - 4) else 0*))
+      (fun _pixel -> 128 (* if pixel > 4 then (pixel - 4) else 0*))
       prev
   in
 
   let ft = Float.of_int t in
 
-  List.map (rotate_element (0.01 *. ft)) elements
-  (* |> List.sort point_z_cmp*)
+  List.map
+    (fun (coord, col) -> (rotate_element (0.01 *. ft) coord, col))
+    elements
+  |> List.sort (fun (a, _) (b, _) -> Graphics.element_z_cmp a b)
   (* |> List.filter_map (fun p ->
        if p.z < 0. then Some p else None
      )*)
@@ -87,7 +87,7 @@ let load_data_from_geojson filename =
   List.concat_map
     (fun feat ->
       match Feature.geometry feat with
-      | Point coord -> [ Point (coord_to_vec coord) ]
+      | Point coord -> [ (Point (coord_to_vec coord), 1.0) ]
       | MultiLineString lines ->
           List.concat_map
             (fun coordinate_list ->
@@ -96,7 +96,7 @@ let load_data_from_geojson filename =
               | hd1 :: hd2 :: tl ->
                   let rec loop last next rest acc =
                     let n =
-                      Line (coord_to_vec last, coord_to_vec next) :: acc
+                      (Line (coord_to_vec last, coord_to_vec next), 1.0) :: acc
                     in
                     match rest with [] -> n | hd :: tl -> loop next hd tl n
                   in
@@ -108,27 +108,43 @@ let load_data_from_geojson filename =
           *)
           match coordinate_list_list with
           | coordinate_list :: _ ->
-              [ Polygon (List.map coord_to_vec coordinate_list) ]
+              [ (Polygon (List.map coord_to_vec coordinate_list), 1.0) ]
           | _ -> [])
       | _ -> [])
     features
 
 let load_data_from_csv filename =
   In_channel.with_open_text filename (fun inc ->
+      let csv_inc = Csv.of_channel inc in
+      let max_val =
+        Csv.fold_left
+          ~f:(fun acc row ->
+            match row with
+            | [ _cellid; value ] ->
+                let fvalue = Float.of_string value in
+                if fvalue > acc then fvalue else acc
+            | _ -> acc)
+          ~init:0.0 csv_inc
+      in
+      Printf.printf "%f\n" max_val;
+      In_channel.seek inc 0L;
+      let csv_inc = Csv.of_channel inc in
       Csv.fold_left
         ~f:(fun acc row ->
           match row with
-          | [ cellid; _value ] -> (
+          | [ cellid; value ] -> (
               let cell = H3.string_to_h3 cellid in
               let boundary = H3.cell_to_boundary cell in
               match boundary.num_verts with
               | 0 -> acc
               | _ ->
-                  Polygon
-                    (List.map h3_lat_lng_to_vec (Array.to_list boundary.verts))
+                  ( Polygon
+                      (List.map h3_lat_lng_to_vec
+                         (Array.to_list boundary.verts)),
+                    Float.of_string value /. max_val )
                   :: acc)
           | _ -> failwith "unable to parse CSV row")
-        ~init:[] (Csv.of_channel inc))
+        ~init:[] csv_inc)
 
 let load_data_from_file filename =
   match Filename.extension filename with
@@ -143,6 +159,6 @@ let () =
 
   Printf.printf "%d elements\n" (List.length elements);
 
-  Palette.generate_mono_palette 16
+  Palette.generate_mono_palette 256
   |> Screen.create 1024 1024 1
   |> Base.run "Day 1" None (tick elements)

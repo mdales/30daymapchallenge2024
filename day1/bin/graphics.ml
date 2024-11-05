@@ -29,3 +29,14 @@ let rotate_z (a : float) (p : vec) : vec =
 
 let point_z_cmp (a : vec) (b : vec) : int =
   if a.z == b.z then 0 else if a.z < b.z then 1 else -1
+
+let get_represent_vec elem =
+  (* at some point this could be the mid point *)
+  match elem with
+  | Point v -> v
+  | Line (a, _) -> a
+  | Triangle (a, _, _) -> a
+  | Polygon al -> List.nth al 0
+
+let element_z_cmp (a : elem) (b : elem) : int =
+  point_z_cmp (get_represent_vec a) (get_represent_vec b)
