@@ -134,13 +134,11 @@ let load_data_from_csv filename =
           match row with
           | [ cellid; value ] -> (
               let cell = H3.string_to_h3 cellid in
-              let boundary = H3.cell_to_boundary cell in
-              match boundary.num_verts with
-              | 0 -> acc
+              let boundary = Array.to_list (H3.cell_to_boundary cell) in
+              match boundary with
+              | [] -> acc
               | _ ->
-                  ( Polygon
-                      (List.map h3_lat_lng_to_vec
-                         (Array.to_list boundary.verts)),
+                  ( Polygon (List.map h3_lat_lng_to_vec boundary),
                     Float.of_string value /. max_val )
                   :: acc)
           | _ -> failwith "unable to parse CSV row")
