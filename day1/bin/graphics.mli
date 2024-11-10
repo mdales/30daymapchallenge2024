@@ -4,7 +4,7 @@ type elem =
   | Point of vec
   | Line of vec * vec
   | Triangle of vec * vec * vec
-  | Polygon of vec list
+  | Polygon of vec array
 
 val rotate_x : float -> vec -> vec
 val rotate_y : float -> vec -> vec

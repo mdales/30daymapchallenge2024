@@ -4,7 +4,7 @@ type elem =
   | Point of vec
   | Line of vec * vec
   | Triangle of vec * vec * vec
-  | Polygon of vec list
+  | Polygon of vec array
 
 let rotate_x (a : float) (p : vec) : vec =
   {
@@ -36,7 +36,7 @@ let get_represent_vec elem =
   | Point v -> v
   | Line (a, _) -> a
   | Triangle (a, _, _) -> a
-  | Polygon al -> List.nth al 0
+  | Polygon al -> al.(0)
 
 let element_z_cmp (a : elem) (b : elem) : int =
   point_z_cmp (get_represent_vec a) (get_represent_vec b)

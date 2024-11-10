@@ -1,4 +1,4 @@
-open Claudius
+open ClaudiusII
 open Graphics
 
 let radius = 60.
@@ -19,7 +19,7 @@ let render_to_primitives (_ft : float) (s : Screen.t)
       let col = Int.of_float (Float.of_int palette_size *. c) in
       match e with
       | Point e ->
-          Primitives.Pixel (project s e, col / if e.z < 0. then 1 else 3)
+          Primitives.Point (project s e, col / if e.z < 0. then 1 else 3)
       | Line (a, b) ->
           Primitives.Line
             (project s a, project s b, col / if a.z < 0. then 1 else 3)
@@ -27,8 +27,8 @@ let render_to_primitives (_ft : float) (s : Screen.t)
           Primitives.FilledTriangle (project s a, project s b, project s c, col)
       | Polygon vl ->
           let rep = Graphics.get_represent_vec e in
-          Primitives.FilledPolygon
-            (List.map (project s) vl, col / if rep.z < 0. then 1 else 3))
+          Primitives.Polygon
+            (Array.map (project s) vl, col / if rep.z < 0. then 1 else 3))
     elements
 
 let rotate_element angle e =
@@ -37,15 +37,30 @@ let rotate_element angle e =
   | Point v -> Point (rfunc v)
   | Line (a, b) -> Line (rfunc a, rfunc b)
   | Triangle (a, b, c) -> Triangle (rfunc a, rfunc b, rfunc c)
-  | Polygon vl -> Polygon (List.map rfunc vl)
+  | Polygon vl -> Polygon (Array.map rfunc vl)
 
-let tick elements t s prev _i =
-  let buffer =
-    Framebuffer.map
-      (fun _pixel -> 128 (* if pixel > 4 then (pixel - 4) else 0*))
-      prev
-  in
+(* let tick elements t s prev _i =
+   let buffer =
+     Framebuffer.map
+       (fun _pixel -> 128 (* if pixel > 4 then (pixel - 4) else 0*))
+       prev
+   in
 
+   let ft = Float.of_int t in
+
+   List.map
+     (fun (coord, col) -> (rotate_element (0.01 *. ft) coord, col))
+     elements
+   |> List.sort (fun (a, _) (b, _) -> Graphics.element_z_cmp a b)
+   (* |> List.filter_map (fun p ->
+        if p.z < 0. then Some p else None
+      )*)
+   |> render_to_primitives ft s
+   |> Framebuffer.render buffer;
+
+   buffer*)
+
+let tick elements t s _ _i =
   let ft = Float.of_int t in
 
   List.map
@@ -56,9 +71,6 @@ let tick elements t s prev _i =
        if p.z < 0. then Some p else None
      )*)
   |> render_to_primitives ft s
-  |> Framebuffer.render buffer;
-
-  buffer
 
 let pi = acos (-1.)
 let deg_to_radians x = x /. 180. *. pi
@@ -108,7 +120,11 @@ let load_data_from_geojson filename =
           *)
           match coordinate_list_list with
           | coordinate_list :: _ ->
-              [ (Polygon (List.map coord_to_vec coordinate_list), 1.0) ]
+              [
+                ( Polygon
+                    (Array.map coord_to_vec (Array.of_list coordinate_list)),
+                  1.0 );
+              ]
           | _ -> [])
       | _ -> [])
     features
@@ -134,11 +150,11 @@ let load_data_from_csv filename =
           match row with
           | [ cellid; value ] -> (
               let cell = H3.string_to_h3 cellid in
-              let boundary = Array.to_list (H3.cell_to_boundary cell) in
+              let boundary = H3.cell_to_boundary cell in
               match boundary with
-              | [] -> acc
+              | [||] -> acc
               | _ ->
-                  ( Polygon (List.map h3_lat_lng_to_vec boundary),
+                  ( Polygon (Array.map h3_lat_lng_to_vec boundary),
                     Float.of_string value /. max_val )
                   :: acc)
           | _ -> failwith "unable to parse CSV row")
@@ -146,7 +162,7 @@ let load_data_from_csv filename =
 
 let load_data_from_file filename =
   match Filename.extension filename with
-  | ".geojson" -> load_data_from_geojson filename
+  | ".geojson" | ".json" -> load_data_from_geojson filename
   | ".csv" -> load_data_from_csv filename
   | _ -> failwith (Printf.sprintf "Unrecognised file extension on %s" filename)
 
