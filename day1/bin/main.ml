@@ -110,6 +110,17 @@ let load_data_from_geojson filename =
           | coordinate_list :: _ ->
               [ (Polygon (List.map coord_to_vec coordinate_list), 1.0) ]
           | _ -> [])
+      | MultiPolygon coordinate_list_list_list -> (
+        List.concat_map ( fun coordinate_list_list -> 
+          match coordinate_list_list with
+          | coordinate_list :: _ ->
+              [
+                ( Polygon
+                    (Array.map coord_to_vec (Array.of_list coordinate_list)),
+                  1.0 );
+              ]
+          | _ -> []
+        ) coordinate_list_list_list)
       | _ -> [])
     features
 

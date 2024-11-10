@@ -7,6 +7,7 @@ type geometry =
   | LineString of coord list
   | MultiLineString of coord list list
   | Polygon of coord list list
+  | MultiPolygon of coord list list list
   | None
 
 (* Not complete... *)
