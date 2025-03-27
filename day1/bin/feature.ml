@@ -3,9 +3,7 @@ type coord = { latitude : float; longitude : float }
 
 type geometry =
   | Point of coord
-  | MultiPoint of coord list
   | LineString of coord list
-  | MultiLineString of coord list list
   | Polygon of coord list list
   | None
 
@@ -25,50 +23,48 @@ let convert_coords coordinates =
   | [ x; y ] -> Some { longitude = to_float x; latitude = to_float y }
   | _ -> None
 
-let geometry v =
+let geometries v =
   let open Yojson.Basic.Util in
   let geometry = v.root |> member "geometry" in
   let geom_type = geometry |> member "type" |> to_string in
   match geom_type with
   | "Point" -> (
       let coordinates = geometry |> member "coordinates" |> to_list in
-      match convert_coords coordinates with Some c -> Point c | None -> None)
+      match convert_coords coordinates with Some c -> [Point c] | None -> [])
   | "MultiPoint" ->
       let list_of_coords = geometry |> member "coordinates" |> to_list in
-      MultiPoint
-        (List.filter_map
-           (fun point_list ->
-             let coordinates = to_list point_list in
-             convert_coords coordinates)
-           list_of_coords)
+      List.filter_map
+         (fun point_list ->
+           let coordinates = to_list point_list in
+           match convert_coords coordinates with Some c -> Some (Point c) | None -> None)
+         list_of_coords
   | "LineString" ->
       let list_of_coords = geometry |> member "coordinates" |> to_list in
-      LineString
+      [LineString
         (List.filter_map
            (fun point_list ->
              let coordinates = to_list point_list in
              convert_coords coordinates)
-           list_of_coords)
+           list_of_coords)]
   | "MultiLineString" ->
       (* coordinates is a list of lists of points *)
       let list_of_list_of_coords =
         geometry |> member "coordinates" |> to_list
       in
-      MultiLineString
         (List.map
            (fun line_node ->
              let list_of_coords = to_list line_node in
-             List.filter_map
+             LineString (List.filter_map
                (fun point_list ->
                  let coordinates = to_list point_list in
                  convert_coords coordinates)
-               list_of_coords)
+               list_of_coords))
            list_of_list_of_coords)
   | "Polygon" ->
       let list_of_list_of_coords =
         geometry |> member "coordinates" |> to_list
       in
-      Polygon
+      [Polygon
         (List.map
            (fun line_node ->
              let list_of_coords = to_list line_node in
@@ -77,8 +73,25 @@ let geometry v =
                  let coordinates = to_list point_list in
                  convert_coords coordinates)
                list_of_coords)
-           list_of_list_of_coords)
-  | _ -> None
+           list_of_list_of_coords)]
+  | "MultiPolygon" ->
+     let list_of_list_of_list_of_coords =
+       geometry |> member "coordinates" |> to_list
+     in
+     List.map
+     (fun list_of_list_of_coords_m ->
+      let list_of_list_of_coords = to_list list_of_list_of_coords_m in
+      Polygon
+       (List.map
+          (fun line_node ->
+            let list_of_coords = to_list line_node in
+            List.filter_map
+              (fun point_list ->
+                let coordinates = to_list point_list in
+                convert_coords coordinates)
+              list_of_coords)
+          list_of_list_of_coords)) list_of_list_of_list_of_coords
+  | _ -> []
 
 let property_keys v =
   match Yojson.Basic.Util.member "properties" v.root with

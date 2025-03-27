@@ -1,4 +1,4 @@
-open ClaudiusII
+open Claudius
 open Graphics
 
 let radius = 60.
@@ -28,7 +28,7 @@ let render_to_primitives (_ft : float) (s : Screen.t)
       | Polygon vl ->
           let rep = Graphics.get_represent_vec e in
           Primitives.Polygon
-            (Array.map (project s) vl, col / if rep.z < 0. then 1 else 3))
+            (List.map (project s) (Array.to_list vl), col / if rep.z < 0. then 1 else 3))
     elements
 
 let rotate_element angle e =
@@ -39,7 +39,7 @@ let rotate_element angle e =
   | Triangle (a, b, c) -> Triangle (rfunc a, rfunc b, rfunc c)
   | Polygon vl -> Polygon (Array.map rfunc vl)
 
-(* let tick elements t s prev _i =
+let tick elements t s prev _i =
    let buffer =
      Framebuffer.map
        (fun _pixel -> 128 (* if pixel > 4 then (pixel - 4) else 0*))
@@ -58,9 +58,9 @@ let rotate_element angle e =
    |> render_to_primitives ft s
    |> Framebuffer.render buffer;
 
-   buffer*)
+   buffer
 
-let tick elements t s _ _i =
+(* let tick elements t s _ _i =
   let ft = Float.of_int t in
 
   List.map
@@ -70,7 +70,7 @@ let tick elements t s _ _i =
   (* |> List.filter_map (fun p ->
        if p.z < 0. then Some p else None
      )*)
-  |> render_to_primitives ft s
+  |> render_to_primitives ft s *)
 
 let pi = acos (-1.)
 let deg_to_radians x = x /. 180. *. pi
@@ -96,11 +96,27 @@ let h3_lat_lng_to_vec (coord : H3.lat_lng) =
 
 let load_data_from_geojson filename =
   let features = Geojson.of_file filename |> Geojson.features in
-  List.concat_map
-    (fun feat ->
-      match Feature.geometry feat with
-      | Point coord -> [ (Point (coord_to_vec coord), 1.0) ]
-      | MultiLineString lines ->
+  let expanded = List.concat_map Feature.geometries features in
+  List.filter_map (fun (geom: Feature.geometry) ->
+    match geom with
+    | Point coord -> Some (Point (coord_to_vec coord), 1.0)
+    | Polygon coordinate_list_list -> (
+      match coordinate_list_list with
+      | coordinate_list :: _ ->
+          Some ( Polygon
+              (Array.map coord_to_vec (Array.of_list coordinate_list)),
+            1.0 );
+
+      | _ -> None)
+    | _ -> None
+  ) expanded
+
+(*
+  List.filter_map
+    (fun feat: Feature.geometry ->
+      match feat with
+      | Point coord -> Point (coord_to_vec coord), 1.0)
+      (* | MultiLineString lines ->
           List.concat_map
             (fun coordinate_list ->
               match coordinate_list with
@@ -113,7 +129,7 @@ let load_data_from_geojson filename =
                     match rest with [] -> n | hd :: tl -> loop next hd tl n
                   in
                   loop hd1 hd2 tl [])
-            lines
+            lines *)
       | Polygon coordinate_list_list -> (
           (* GeoJSON polygons are lists of polygons, with the first being the outer and the rest being holes.
              Claudius doesn't model those, so we just process the first one and ignore the others for now.
@@ -125,9 +141,9 @@ let load_data_from_geojson filename =
                     (Array.map coord_to_vec (Array.of_list coordinate_list)),
                   1.0 );
               ]
-          | _ -> [])
-      | _ -> [])
-    features
+          | _ -> None)
+      | _ -> None)
+    expanded *)
 
 let load_data_from_csv filename =
   In_channel.with_open_text filename (fun inc ->
@@ -170,8 +186,6 @@ let () =
   let args_list = List.tl (Array.to_list Sys.argv) in
 
   let elements = List.concat_map load_data_from_file args_list in
-
-  Printf.printf "%d elements\n" (List.length elements);
 
   Palette.generate_mono_palette 256
   |> Screen.create 1024 1024 1
